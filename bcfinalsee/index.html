@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bus Ticket Booking</title>
+    <link
+      href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="flex w-screen h-screen justify-center items-center">
+    <div class="flex-col space-y-2 justify-center items-center">
+      <button
+        id="loginButton"
+        class="mx-auto rounded-md p-2 bg-purple-500 text-white"
+      >
+        Connect to MetaMask
+      </button>
+      <p id="userWallet" class="text-lg text-gray-600 my-2"></p>
+      <div id="output" class="text-gray-800"></div>
+      <button
+        onclick="showAvailableSeats()"
+        class="mx-auto rounded-md p-2 bg-blue-500 text-white"
+      >
+        Show Available Seats
+      </button>
+      <div>
+        <input
+          type="number"
+          id="seatNumberInput"
+          placeholder="Enter seat number"
+          class="p-2 border border-gray-300 rounded-md"
+        />
+        <button
+          onclick="checkAvailability()"
+          class="mt-2 mx-auto rounded-md p-2 bg-green-500 text-white"
+        >
+          Check Availability
+        </button>
+      </div>
+      <button
+        onclick="fetchMyTickets()"
+        class="mx-auto rounded-md p-2 bg-yellow-500 text-white"
+      >
+        My Tickets
+      </button>
+      <div>
+        <input
+          type="text"
+          id="seatNumbersInput"
+          placeholder="Enter seat numbers (comma separated)"
+          class="p-2 border border-gray-300 rounded-md"
+        />
+        <button
+          onclick="bookSeats()"
+          class="mt-2 mx-auto rounded-md p-2 bg-indigo-500 text-white"
+        >
+          Book Seats
+        </button>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.3.5/dist/web3.min.js"></script>
+    <script>
+      window.userWalletAddress = null;
+      const loginButton = document.getElementById("loginButton");
+      const userWallet = document.getElementById("userWallet");
+      const output = document.getElementById("output");
+      const seatNumberInput = document.getElementById("seatNumberInput");
+      const seatNumbersInput = document.getElementById("seatNumbersInput");
+      let web3;
+
+      async function toggleButton() {
+        if (!window.ethereum) {
+          loginButton.innerText = "MetaMask is not installed";
+          loginButton.classList.remove("bg-purple-500", "text-white");
+          loginButton.classList.add(
+            "bg-gray-500",
+            "text-gray-100",
+            "cursor-not-allowed"
+          );
+          return false;
+        }
+
+        loginButton.addEventListener("click", loginWithMetaMask);
+      }
+
+      async function loginWithMetaMask() {
+        try {
+          const accounts = await window.ethereum.request({
+            method: "eth_requestAccounts",
+          });
+          if (!accounts || accounts.length === 0) {
+            throw new Error("No accounts found");
+          }
+          window.userWalletAddress = accounts[0];
+          userWallet.innerText = `Connected: ${window.userWalletAddress}`;
+          loginButton.innerText = "Disconnect";
+
+          loginButton.removeEventListener("click", loginWithMetaMask);
+          setTimeout(() => {
+            loginButton.addEventListener("click", signOutOfMetaMask);
+          }, 200);
+        } catch (error) {
+          console.error("MetaMask login error:", error);
+          output.innerText =
+            "Failed to connect with MetaMask. Please check MetaMask and try again.";
+        }
+      }
+
+      function signOutOfMetaMask() {
+        window.userWalletAddress = null;
+        userWallet.innerText = "";
+        loginButton.innerText = "Connect to MetaMask";
+
+        loginButton.removeEventListener("click", signOutOfMetaMask);
+        setTimeout(() => {
+          loginButton.addEventListener("click", loginWithMetaMask);
+        }, 200);
+      }
+
+      async function interactWithContract(method, ...args) {
+        try {
+          const accounts = await window.ethereum.request({
+            method: "eth_requestAccounts",
+          });
+          if (!accounts || accounts.length === 0) {
+            throw new Error("No accounts found");
+          }
+          const contractAddress = "0xDDA7CE167bAa1C26688A3035d2bA55e7f1b2c6DF"; // Your contract address
+          const abi = [
+            {
+              inputs: [
+                {
+                  internalType: "uint256[]",
+                  name: "seatNumbers",
+                  type: "uint256[]",
+                },
+              ],
+              name: "bookSeats",
+              outputs: [],
+              stateMutability: "nonpayable",
+              type: "function",
+            },
+            {
+              inputs: [
+                {
+                  internalType: "uint256",
+                  name: "seatNumber",
+                  type: "uint256",
+                },
+              ],
+              name: "checkAvailability",
+              outputs: [
+                {
+                  internalType: "bool",
+                  name: "",
+                  type: "bool",
+                },
+              ],
+              stateMutability: "view",
+              type: "function",
+            },
+            {
+              inputs: [],
+              name: "myTickets",
+              outputs: [
+                {
+                  internalType: "uint256[]",
+                  name: "",
+                  type: "uint256[]",
+                },
+              ],
+              stateMutability: "view",
+              type: "function",
+            },
+            {
+              inputs: [],
+              name: "showAvailableSeats",
+              outputs: [
+                {
+                  internalType: "uint256[]",
+                  name: "",
+                  type: "uint256[]",
+                },
+              ],
+              stateMutability: "view",
+              type: "function",
+            },
+          ];
+
+          const contract = new web3.eth.Contract(abi, contractAddress);
+
+          // Use call or send based on method type
+          let result;
+          if (
+            method === "showAvailableSeats" ||
+            method === "checkAvailability" ||
+            method === "myTickets"
+          ) {
+            result = await contract.methods[method]().call({
+              from: accounts[0],
+            });
+          } else {
+            result = await contract.methods[method](...args).send({
+              from: accounts[0],
+              gas: 3000000, // adjust the gas limit as per your contract
+            });
+          }
+
+          return result;
+        } catch (error) {
+          console.error("Contract interaction error:", error);
+          output.innerText =
+            "Failed to interact with the contract. Please check console for details.";
+          return null;
+        }
+      }
+
+      async function showAvailableSeats() {
+        try {
+          console.log("Fetching available seats...");
+          const availableSeats = await interactWithContract(
+            "showAvailableSeats"
+          );
+          console.log("Available seats:", availableSeats);
+          if (availableSeats) {
+            output.innerText = `Available seats: ${availableSeats.join(", ")}`;
+          } else {
+            output.innerText =
+              "Failed to fetch available seats. Please check console for details.";
+          }
+        } catch (error) {
+          console.error("Show available seats error:", error);
+          output.innerText =
+            "Failed to fetch available seats. Please check console for details.";
+        }
+      }
+
+      async function checkAvailability() {
+        try {
+          const seatNumber = parseInt(seatNumberInput.value);
+          console.log(`Checking availability for seat: ${seatNumber}`);
+          const isAvailable = await interactWithContract(
+            "checkAvailability",
+            seatNumber
+          );
+          console.log(`Seat ${seatNumber} availability:`, isAvailable);
+          if (isAvailable) {
+            console.log(`Seat ${seatNumber} is available.`);
+            output.innerText = `Seat ${seatNumber} is available.`;
+          } else {
+            console.log(`Seat ${seatNumber} is not available.`);
+            output.innerText = `Seat ${seatNumber} is not available.`;
+          }
+        } catch (error) {
+          console.error(`Check availability error:`, error);
+          output.innerText = `Failed to check availability. Please check console for details.`;
+        }
+      }
+
+      async function fetchMyTickets() {
+        try {
+          console.log("Fetching booked tickets...");
+          const tickets = await interactWithContract("myTickets");
+          console.log("Booked tickets:", tickets);
+          if (tickets && tickets.length > 0) {
+            output.innerText = `Your booked seats: ${tickets.join(", ")}`;
+          } else {
+            output.innerText = "You have not booked any seats.";
+          }
+        } catch (error) {
+          console.error("Fetch booked tickets error:", error);
+          output.innerText =
+            "Failed to fetch your booked seats. Please check console for details.";
+        }
+      }
+
+      async function bookSeats() {
+        try {
+          const seatNumbers = seatNumbersInput.value
+            .split(",")
+            .map((num) => parseInt(num.trim()));
+          console.log("Booking seats:", seatNumbers);
+          const result = await interactWithContract("bookSeats", seatNumbers);
+          console.log("Booking result:", result);
+          output.innerText = "Seats booked successfully.";
+        } catch (error) {
+          console.error("Book seats error:", error);
+          output.innerText =
+            "Failed to book seats. Please check console for details.";
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        web3 = new Web3(window.ethereum);
+        toggleButton();
+      });
+    </script>
+  </body>
+</html>
